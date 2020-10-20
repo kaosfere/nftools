@@ -1,8 +1,9 @@
-import click
 import os
-import sys
 import logging
 import sqlite3
+import sys
+
+import click
 
 COLUMNS = (
     "airport_id",
@@ -84,11 +85,13 @@ ICON_MAP = {
     "emergency.png": "7",
     "susfreight.png": "8",
     "transit.png": "9",
-    "humanitarian.png": "12"
+    "humanitarian.png": "12",
 }
+
 
 @click.group()
 def main():
+    """Stub function to invoke subcommand processing."""
     pass
 
 
@@ -106,7 +109,13 @@ def main():
     ),
 )
 @click.option("--force", help="do it even if airport count would reduce", default=False)
-def navdata(neofly, navdata, force):
+def navdata(neofly: str, navdata: str, force: bool) -> None:
+    """Import data from a navdatareader database.
+
+    The NeoFly database uses an airport table with the same schema as that
+    used by navdatareader and Little Navmap.  This function will copy the
+    data from an LNM-style database into the Neofly DB.
+    """
     if not os.path.exists(neofly):
         raise Exception(f"Unable to find neofly data at '{neofly}")
 
@@ -121,14 +130,14 @@ def navdata(neofly, navdata, force):
         cur.execute(f"select {columnlist} from airport")
         results = cur.fetchall()
 
-    qs = ",".join(["?" for _ in range(len(COLUMNS))])
+    qs = make_qs(COLUMNS)
     with sqlite3.connect(neofly) as conn:
         cur = conn.cursor()
         cur.execute("select count(*) from airport")
         old_rows = cur.fetchone()[0]
         new_rows = len(results)
         logging.info(f"Replacing {old_rows} airports with {new_rows}.")
-        if new_rows == old_rows and not force:
+        if new_rows < old_rows and not force:
             raise Exception(
                 "Execution would reduce airport count.  Run again with --force if this is wanted."
             )
@@ -155,7 +164,20 @@ def navdata(neofly, navdata, force):
     help="path to neofly database",
     default=os.path.expandvars("%PROGRAMDATA%\\NeoFly\common.db"),
 )
-def nograss(neofly):
+def nograss(neofly: str) -> None:
+    """Remove non-hard-surfaced airports from the NeoFly database.
+
+    Since the use of the full MSFS database adds a lot of smaller fields
+    that may not be suitable for larger craft, some folks have wanted to
+    be able to remove any airports that lack paved runways.
+
+    The way to do this with full LTM data would be to look at the runway
+    table and join that with airport, but the NeoFly database dosen't have
+    separate runway info.
+
+    Instead, we'll just remove any field which doesn't have at least one
+    lit runway.  This seems to work pretty well.
+    """
     if not os.path.exists(neofly):
         raise Exception(f"Unable to find neofly data at '{neofly}")
     with sqlite3.connect(neofly) as conn:
@@ -180,7 +202,13 @@ def nograss(neofly):
     help="path to new neofly database",
     default=os.path.expandvars("%PROGRAMDATA%\\NeoFly\common.db"),
 )
-def career(source, target):
+def career(source: str, target: str) -> None:
+    """Import an old career into NeoFly 1.4.
+
+    This will copy the data from a NeoFly 1.3.4 database into a database
+    for version 1.4.  In the process we do conversions for the images that
+    appear in logs and in the way names are stored in the hangar.
+    """
     if not os.path.exists(source):
         raise Exception(f"Unable to find source data at '{source}'")
 
@@ -196,17 +224,18 @@ def career(source, target):
         hangar = cur.fetchall()
         cur.execute("select * from log")
         log = cur.fetchall()
-    
+
     new_log = []
     for row in log:
         new_row = list(row)
-        new_row[1] = ICON_MAP.get(os.path.split(new_row[1])[-1], "NONE")
+        new_row[1] = ICON_MAP.get((os.path.split(new_row[1])[-1]).lower(), "NONE")
         new_log.append(new_row)
 
     logging.info("Loading new aircraft data.")
     with sqlite3.connect(target) as conn:
         cur = conn.cursor()
         cur.execute("select aircraft from aircraftData")
+        # Sort the list of aircraft by length of name descending
         aclist = sorted([row[0] for row in cur.fetchall()], key=len, reverse=True)
 
     new_hangar = []
@@ -222,19 +251,31 @@ def career(source, target):
     with sqlite3.connect(target) as conn:
         cur = conn.cursor()
         logging.info("Replacing career data.")
-        qs = ",".join(["?" for _ in range(len(career[0]))])
+        qs = make_qs(career[0])
         cur.execute("delete from career")
         cur.executemany(f"insert into career values ({qs})", career)
         logging.info("Replacing log data.")
-        qs = ",".join(["?" for _ in range(len(new_log[0]))])
+        qs = make_qs(new_log[0])
         cur.execute("delete from log")
         cur.executemany(f"insert into log values ({qs})", new_log)
         logging.info("Replacing hangar data.")
-        qs = ",".join(["?" for _ in range(len(new_hangar[0]))])
+        qs = make_qs(new_hangar[0])
         cur.execute("delete from hangar")
         cur.executemany(f"insert into hangar values ({qs})", new_hangar)
         conn.commit()
     logging.info("Done.")
+
+def make_qs(listname: list) -> str:
+    """Create a list of '?'s for use in a query string.
+
+       This is a convenience function that will take a list and return a string
+       composed of len(list) queston marks joined by commas for use in an sql
+       VALUES() clause.
+       
+       Args:
+           listname: The list to use for generation.
+    """
+    return ",".join(["?" for _ in range(len(listname))])
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="[%(levelname)s]: %(message)s")
