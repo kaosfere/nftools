@@ -74,6 +74,18 @@ COLUMNS = (
     "laty",
 )
 
+ICON_MAP = {
+    "partner.png": "1",
+    "freight.png": "2",
+    "mail.png": "3",
+    "sensfreight.png": "4",
+    "vip.png": "5",
+    "secretpax.png": "6",
+    "emergency.png": "7",
+    "susfreight.png": "8",
+    "transit.png": "9",
+    "humanitarian.png": "12"
+}
 
 @click.group()
 def main():
@@ -188,8 +200,7 @@ def career(source, target):
     new_log = []
     for row in log:
         new_row = list(row)
-        # this isn't right yet
-        new_row[1] = os.path.split(new_row[1])[-1]
+        new_row[1] = ICON_MAP.get(os.path.split(new_row[1])[-1], "NONE")
         new_log.append(new_row)
 
     logging.info("Loading new aircraft data.")
