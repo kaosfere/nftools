@@ -74,6 +74,7 @@ COLUMNS = (
     "laty",
 )
 
+
 @click.group()
 def main():
     pass
@@ -116,7 +117,9 @@ def navdata(neofly, navdata, force):
         new_rows = len(results)
         logging.info(f"Replacing {old_rows} airports with {new_rows}.")
         if new_rows == old_rows and not force:
-            raise Exception("Execution would reduce airport count.  Run again with --force if this is wanted.")
+            raise Exception(
+                "Execution would reduce airport count.  Run again with --force if this is wanted."
+            )
         cur.execute("delete from airport")
         cur.executemany(f"insert into airport ({columnlist}) values ({qs})", results)
         logging.info("Updating commercialHubs with new airport IDs")
@@ -131,7 +134,8 @@ def navdata(neofly, navdata, force):
         """
         )
         conn.commit()
-        logging.info("Done!")    
+        logging.info("Done!")
+
 
 @main.command()
 @click.option(
@@ -141,18 +145,85 @@ def navdata(neofly, navdata, force):
 )
 def nograss(neofly):
     if not os.path.exists(neofly):
-        raise Exception(f"Unable to find neofly data at '{neofly}")    
+        raise Exception(f"Unable to find neofly data at '{neofly}")
     with sqlite3.connect(neofly) as conn:
         cur = conn.cursor()
         cur.execute("select count(*) from airport")
         old_rows = cur.fetchone()[0]
         cur.execute("delete from airport where num_runway_light = 0")
-        cur.execute("delete from missions where departure not in (select ident from airport) or arrival not in (select ident from airport)")
+        cur.execute(
+            "delete from missions where departure not in (select ident from airport) or arrival not in (select ident from airport)"
+        )
         cur.execute("select count(*) from airport")
         new_rows = cur.fetchone()[0]
         logging.info(f"Deleted {old_rows - new_rows} of {old_rows} airports.")
         conn.commit()
-        logging.info("Done!") 
+        logging.info("Done!")
+
+
+@main.command()
+@click.option("--source", help="path to old neofly database", required=True)
+@click.option(
+    "--target",
+    help="path to new neofly database",
+    default=os.path.expandvars("%PROGRAMDATA%\\NeoFly\common.db"),
+)
+def career(source, target):
+    if not os.path.exists(source):
+        raise Exception(f"Unable to find source data at '{source}'")
+
+    if not os.path.exists(target):
+        raise Exception(f"Unable to find source data at '{target}")
+
+    logging.info("Loading old career.")
+    with sqlite3.connect(source) as conn:
+        cur = conn.cursor()
+        cur.execute("select * from career")
+        career = cur.fetchall()
+        cur.execute("select * from hangar")
+        hangar = cur.fetchall()
+        cur.execute("select * from log")
+        log = cur.fetchall()
+    
+    new_log = []
+    for row in log:
+        new_row = list(row)
+        # this isn't right yet
+        new_row[1] = os.path.split(new_row[1])[-1]
+        new_log.append(new_row)
+
+    logging.info("Loading new aircraft data.")
+    with sqlite3.connect(target) as conn:
+        cur = conn.cursor()
+        cur.execute("select aircraft from aircraftData")
+        aclist = sorted([row[0] for row in cur.fetchall()], key=len, reverse=True)
+
+    new_hangar = []
+    for row in hangar:
+        for item in aclist:
+            if item.upper() in row[0].upper():
+                new_ac_name = item
+                break
+        new_row = list(row)
+        new_row[0] = new_ac_name
+        new_hangar.append(new_row)
+
+    with sqlite3.connect(target) as conn:
+        cur = conn.cursor()
+        logging.info("Replacing career data.")
+        qs = ",".join(["?" for _ in range(len(career[0]))])
+        cur.execute("delete from career")
+        cur.executemany(f"insert into career values ({qs})", career)
+        logging.info("Replacing log data.")
+        qs = ",".join(["?" for _ in range(len(new_log[0]))])
+        cur.execute("delete from log")
+        cur.executemany(f"insert into log values ({qs})", new_log)
+        logging.info("Replacing hangar data.")
+        qs = ",".join(["?" for _ in range(len(new_hangar[0]))])
+        cur.execute("delete from hangar")
+        cur.executemany(f"insert into hangar values ({qs})", new_hangar)
+        conn.commit()
+    logging.info("Done.")
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="[%(levelname)s]: %(message)s")
