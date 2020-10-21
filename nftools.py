@@ -1,5 +1,6 @@
-import os
+import csv
 import logging
+import os
 import sqlite3
 import sys
 
@@ -263,6 +264,53 @@ def career(source: str, target: str) -> None:
         cur.execute("delete from hangar")
         cur.executemany(f"insert into hangar values ({qs})", new_hangar)
         conn.commit()
+    logging.info("Done.")
+
+@main.command()
+@click.option(
+    "--neofly",
+    help="path to neofly database",
+    default=os.path.expandvars("%PROGRAMDATA%\\NeoFly\common.db"),
+)
+@click.option(
+    "--source",
+    help="path to CSV with aircraft data"
+)
+def aircraft(neofly: str, source: str) -> None:
+    """Load new aircraft data from a CSV.
+
+    This will replace the aircraft data in your database with the content of a 
+    CSV containing new records.  If none is provided, a default file provided
+    by @LostBoii on the NeoFly discord server will be used.
+
+    If creating your own, the CSV must have a header line with a name for each
+    columns that matches one from the aircraft table.
+    """
+    if not os.path.exists(neofly):
+        raise Exception(f"Unable to find neofly data at '{neofly}")
+
+    if not source:
+        try:
+            pwd = sys._MEIPASS
+        except (ModuleNotFoundError, AttributeError):
+            pwd = os.path.abspath(".")
+        source = os.path.join(pwd, "aircraftdata.csv")
+        logging.info("Using bundled aircraft data.")
+    else:
+        logging.info(f"Loading aircraft data from {source}.")
+
+    with open(source, "r") as rawsrc:
+        reader = csv.reader(rawsrc)
+        header = next(reader)
+        qs = make_qs(header)
+        row_string = ",".join(header)
+
+        logging.info("Replacing aircraft data.")
+        with sqlite3.connect(neofly) as conn:
+            cur = conn.cursor()
+            cur.execute("delete from aircraftData")
+            cur.executemany(f"insert into aircraftData ({row_string}) values ({qs})", reader)
+            conn.commit()
     logging.info("Done.")
 
 def make_qs(listname: list) -> str:

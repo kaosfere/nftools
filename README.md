@@ -9,6 +9,7 @@ If you're in a hurry, put `nftools.exe` anywhere you want.  Then do one of the f
 * `nftools career --source c:\path\to\your\old\common.db` to import your 1.3.4 career to 1.4
 * `nftools navdata` to import Little Navmap airport information into NeoFly
 * `nftools nograss` to remove airports without a paved runway from the database.
+* `nftools aircraft` to replace your aircraft data with a fuller set
 
 Have fun!
 
@@ -56,3 +57,11 @@ You caan import your career from NeoFly 1.3.4 into 1.4 with the `career` argumen
 Since the use of the full MSFS database adds a lot of smaller fields that may not be suitable for larger craft, some folks have wanted to be able to remove any airports that lack paved runways.  The way to do this with full LTM data would be to look at the runway table and join that with airport, but the NeoFly database dosen't have separate runway info.
 
 Instead, we'll just remove any field which doesn't have at least one lit runway.  This seems to work pretty well.  Aftewars we clean up the missions table to make sure that we don't leave any missions to or from airports that don't exist any more.
+
+## aircraft import
+
+Adding new aircraft can be a little tedious.  The aircraft import mode will fix that by dumping the aircraft table and loading the contents from a CSV with alternate data.  If no argument is provided it will load a file provided by @LostBoii on the NeoFly discord which has values added for all the available commercial aircraft.  Since this is bound to go out of date, a different file can be added with the `--source` argument, as in:
+
+    nftools aircraft --source aircraftdata.csv
+
+A copy of the stock aircraft.csv is included which can be modified if you want to add, remove, or change values.
