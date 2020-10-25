@@ -216,13 +216,9 @@ def randomhq(neofly: str, career: str) -> None:
     with sqlite3.connect(neofly) as conn:
         cur = conn.cursor()
         # Select all the locations where there are owned aircraft on the ground
-        cur.execute(f"SELECT Location from hangar JOIN career ON hangar.owner = career.id WHERE career.name='{career}' AND hangar.status = 0")
+        cur.execute(f"SELECT DISTINCT Location from hangar JOIN career ON hangar.owner = career.id WHERE career.name='{career}' AND hangar.status = 0")
         # Get the airport code
         locations = [l[0] for l in cur]
-        # remove duplicates so the selection isn't weighted
-        locations = set(locations)
-        # Turn it back into a list for random.choice
-        locations = list(locations)
         logging.info(f"Eligible locations: {str(locations)}")
         new_location = random.choice(locations)
         logging.info(f"Chosen location: {new_location}")
