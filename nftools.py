@@ -195,6 +195,40 @@ def nograss(neofly: str) -> None:
         conn.commit()
         logging.info("Done!")
 
+@main.command()
+@click.option(
+    "--neofly",
+    help="path to neofly database",
+    default=os.path.expandvars("%PROGRAMDATA%\\NeoFly\common.db"),
+)
+@click.option(
+    "--career",
+    help="name of the career to move HQ",
+    required=True,
+)
+def randomhq(neofly: str, career: str) -> None:
+    """Move the chosen career pilot to some random airport where the company
+    has at least one owned aircraft not already on a mission.
+    """
+    import random
+    if not os.path.exists(neofly):
+        raise Exception(f"Unable to find neofly data at '{neofly}")
+    with sqlite3.connect(neofly) as conn:
+        cur = conn.cursor()
+        # Select all the locations where there are owned aircraft on the ground
+        cur.execute(f"SELECT Location from hangar JOIN career ON hangar.owner = career.id WHERE career.name='{career}' AND hangar.status = 0")
+        # Get the airport code
+        locations = [l[0] for l in cur]
+        # remove duplicates so the selection isn't weighted
+        locations = set(locations)
+        # Turn it back into a list for random.choice
+        locations = list(locations)
+        logging.info(f"Eligible locations: {str(locations)}")
+        new_location = random.choice(locations)
+        logging.info(f"Chosen location: {new_location}")
+        cur.execute(f"UPDATE career SET pilotCurrentICAO = '{new_location}' WHERE career.name='{career}'")
+        conn.commit()
+        logging.info("Done!")
 
 @main.command()
 @click.option("--source", help="path to old neofly database", required=True)
