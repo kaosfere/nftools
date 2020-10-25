@@ -159,6 +159,49 @@ def navdata(neofly: str, navdata: str, force: bool) -> None:
         logging.info("Done!")
 
 
+def clean_impossible_missions(neofly: str) -> None:
+    """Remove missions whose destination is an airport that does not
+    exist in the airport table.
+    """
+    if not os.path.exists(neofly):
+        raise Exception(f"Unable to find neofly data at '{neofly}")
+    with sqlite3.connect(neofly) as conn:
+        logging.info("Cleaning out impossible missions")
+        cur = conn.cursor()
+        cur.execute(
+            "delete from missions where departure not in (select ident from airport) or arrival not in (select ident from airport)"
+        )
+        conn.commit()
+        logging.info("Done!")
+
+@main.command()
+@click.option(
+    "--neofly",
+    help="path to neofly database",
+    default=os.path.expandvars("%PROGRAMDATA%\\NeoFly\common.db"),
+)
+def noshortgrass(neofly: str) -> None:
+    """Remove short grass airports from the NeoFly database.
+
+    The full MSFS database adds a lot of smaller fields
+    that may not be suitable for larger craft. This option deletes grass
+    runways that are also short.
+    """
+    if not os.path.exists(neofly):
+        raise Exception(f"Unable to find neofly data at '{neofly}")
+    with sqlite3.connect(neofly) as conn:
+        cur = conn.cursor()
+        cur.execute("select count(*) from airport")
+        old_rows = cur.fetchone()[0]
+        cur.execute("delete from airport where num_runway_soft > 0 and longest_runway_length < 3300")
+        clean_dead_airports(neofly)
+        cur.execute("select count(*) from airport")
+        new_rows = cur.fetchone()[0]
+        logging.info(f"Deleted {old_rows - new_rows} of {old_rows} airports.")
+        conn.commit()
+        logging.info("Done!")
+    clean_impossible_missions(neofly)
+
 @main.command()
 @click.option(
     "--neofly",
@@ -166,6 +209,35 @@ def navdata(neofly: str, navdata: str, force: bool) -> None:
     default=os.path.expandvars("%PROGRAMDATA%\\NeoFly\common.db"),
 )
 def nograss(neofly: str) -> None:
+    """Remove short grass airports from the NeoFly database.
+
+    The full MSFS database adds a lot of smaller fields
+    that may not be suitable for larger craft. This option deletes airports with
+    only soft runways.
+    """
+    if not os.path.exists(neofly):
+        raise Exception(f"Unable to find neofly data at '{neofly}")
+    with sqlite3.connect(neofly) as conn:
+        cur = conn.cursor()
+        cur.execute("select count(*) from airport")
+        old_rows = cur.fetchone()[0]
+        cur.execute("delete from airport where num_runway_soft > 0 and num_runway_hard < 1")
+        clean_dead_airports(neofly)
+        cur.execute("select count(*) from airport")
+        new_rows = cur.fetchone()[0]
+        logging.info(f"Deleted {old_rows - new_rows} of {old_rows} airports.")
+        conn.commit()
+        logging.info("Done!")
+    clean_impossible_missions(neofly)
+
+
+@main.command()
+@click.option(
+    "--neofly",
+    help="path to neofly database",
+    default=os.path.expandvars("%PROGRAMDATA%\\NeoFly\common.db"),
+)
+def nodark(neofly: str) -> None:
     """Remove non-hard-surfaced airports from the NeoFly database.
 
     Since the use of the full MSFS database adds a lot of smaller fields
@@ -186,15 +258,13 @@ def nograss(neofly: str) -> None:
         cur.execute("select count(*) from airport")
         old_rows = cur.fetchone()[0]
         cur.execute("delete from airport where num_runway_light = 0")
-        cur.execute(
-            "delete from missions where departure not in (select ident from airport) or arrival not in (select ident from airport)"
-        )
+        clean_dead_airports(neofly)
         cur.execute("select count(*) from airport")
         new_rows = cur.fetchone()[0]
         logging.info(f"Deleted {old_rows - new_rows} of {old_rows} airports.")
         conn.commit()
         logging.info("Done!")
-
+    clean_impossible_missions(neofly)
 
 @main.command()
 @click.option("--source", help="path to old neofly database", required=True)
