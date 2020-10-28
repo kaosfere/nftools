@@ -3,6 +3,7 @@ import logging
 import os
 import sqlite3
 import sys
+import random
 
 import click
 
@@ -89,6 +90,51 @@ ICON_MAP = {
     "humanitarian.png": "12",
 }
 
+def clean_impossible_missions(neofly: str) -> None:
+    """Remove missions whose destination is an airport that does not
+    exist in the airport table.
+    """
+    if not os.path.exists(neofly):
+        raise Exception(f"Unable to find neofly data at '{neofly}")
+    with sqlite3.connect(neofly) as conn:
+        logging.info("Cleaning out impossible missions")
+        cur = conn.cursor()
+        cur.execute(
+            "delete from missions where departure not in (select ident from airport) or arrival not in (select ident from airport)"
+        )
+        conn.commit()
+        logging.info("Done!")
+
+def move_impossible_aircraft(neofly: str) -> None:
+    """After filtering airports, some aircraft may be orphaned. Move
+    orphaned aircraft to airports with similar ident codes (hopefully nearby).
+    """
+    if not os.path.exists(neofly):
+        raise Exception(f"Unable to find neofly data at '{neofly}")
+    with sqlite3.connect(neofly) as conn:
+        logging.info("Moving orphaned aircraft")
+        cur = conn.cursor()
+        cur.execute(f"SELECT hangar.Aircraft, hangar.Location, airport.ident FROM hangar LEFT JOIN airport ON airport.ident=hangar.Location WHERE airport.ident is NULL")
+        orphans=cur.fetchall()
+        for o in orphans:
+            tries = 1
+            searchstring = o[1][0:-tries]+"%"
+            cur.execute(f"SELECT ident FROM airport WHERE ident LIKE '{searchstring}'")
+            possible_locations = cur.fetchall()
+            while len(possible_locations) == 0 and len(searchstring) > 0:
+                searchstring = o[1][0:-tries]+"%"
+                cur.execute(f"SELECT ident FROM airport WHERE ident LIKE '{searchstring}'")
+                possible_locations = cur.fetchall()
+                tries += 1
+
+            if(len(searchstring) == 0):
+                cur.execute(f"SELECT ident FROM airport")
+                possible_locations = cur.fetchall()
+
+            new_location=random.choice(possible_locations)[0]
+            cur.execute(f"UPDATE hangar SET Location='{new_location}' WHERE Location='{o[1]}'")
+        conn.commit()
+    return
 
 @click.group()
 def main():
@@ -158,22 +204,6 @@ def navdata(neofly: str, navdata: str, force: bool) -> None:
         conn.commit()
         logging.info("Done!")
 
-
-def clean_impossible_missions(neofly: str) -> None:
-    """Remove missions whose destination is an airport that does not
-    exist in the airport table.
-    """
-    if not os.path.exists(neofly):
-        raise Exception(f"Unable to find neofly data at '{neofly}")
-    with sqlite3.connect(neofly) as conn:
-        logging.info("Cleaning out impossible missions")
-        cur = conn.cursor()
-        cur.execute(
-            "delete from missions where departure not in (select ident from airport) or arrival not in (select ident from airport)"
-        )
-        conn.commit()
-        logging.info("Done!")
-
 @main.command()
 @click.option(
     "--neofly",
@@ -194,13 +224,13 @@ def noshortgrass(neofly: str) -> None:
         cur.execute("select count(*) from airport")
         old_rows = cur.fetchone()[0]
         cur.execute("delete from airport where num_runway_soft > 0 and longest_runway_length < 3300")
-        clean_dead_airports(neofly)
         cur.execute("select count(*) from airport")
         new_rows = cur.fetchone()[0]
         logging.info(f"Deleted {old_rows - new_rows} of {old_rows} airports.")
         conn.commit()
         logging.info("Done!")
     clean_impossible_missions(neofly)
+    move_impossible_aircraft(neofly)
 
 @main.command()
 @click.option(
@@ -222,13 +252,13 @@ def nograss(neofly: str) -> None:
         cur.execute("select count(*) from airport")
         old_rows = cur.fetchone()[0]
         cur.execute("delete from airport where num_runway_soft > 0 and num_runway_hard < 1")
-        clean_dead_airports(neofly)
         cur.execute("select count(*) from airport")
         new_rows = cur.fetchone()[0]
         logging.info(f"Deleted {old_rows - new_rows} of {old_rows} airports.")
         conn.commit()
         logging.info("Done!")
     clean_impossible_missions(neofly)
+    move_impossible_aircraft(neofly)
 
 
 @main.command()
@@ -258,13 +288,44 @@ def nodark(neofly: str) -> None:
         cur.execute("select count(*) from airport")
         old_rows = cur.fetchone()[0]
         cur.execute("delete from airport where num_runway_light = 0")
-        clean_dead_airports(neofly)
         cur.execute("select count(*) from airport")
         new_rows = cur.fetchone()[0]
         logging.info(f"Deleted {old_rows - new_rows} of {old_rows} airports.")
         conn.commit()
         logging.info("Done!")
     clean_impossible_missions(neofly)
+    move_impossible_aircraft(neofly)
+
+@main.command()
+@click.option(
+    "--neofly",
+    help="path to neofly database",
+    default=os.path.expandvars("%PROGRAMDATA%\\NeoFly\common.db"),
+)
+@click.option(
+    "--career",
+    help="name of the career to move HQ",
+    required=True,
+)
+def randomhq(neofly: str, career: str) -> None:
+    """Move the chosen career pilot to some random airport where the company
+    has at least one owned aircraft not already on a mission.
+    """
+    import random
+    if not os.path.exists(neofly):
+        raise Exception(f"Unable to find neofly data at '{neofly}")
+    with sqlite3.connect(neofly) as conn:
+        cur = conn.cursor()
+        # Select all the locations where there are owned aircraft on the ground
+        cur.execute(f"SELECT DISTINCT Location from hangar JOIN career ON hangar.owner = career.id WHERE career.name='{career}' AND hangar.status = 0")
+        # Get the airport code
+        locations = [l[0] for l in cur]
+        logging.info(f"Eligible locations: {str(locations)}")
+        new_location = random.choice(locations)
+        logging.info(f"Chosen location: {new_location}")
+        cur.execute(f"UPDATE career SET pilotCurrentICAO = '{new_location}' WHERE career.name='{career}'")
+        conn.commit()
+        logging.info("Done!")
 
 @main.command()
 @click.option("--source", help="path to old neofly database", required=True)
