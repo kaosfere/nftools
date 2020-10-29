@@ -3,6 +3,7 @@ import logging
 import os
 import sqlite3
 import sys
+import random
 
 import click
 
@@ -342,6 +343,62 @@ def aircraft(neofly: str, source: str) -> None:
             cur.executemany(f"insert into aircraftData ({row_string}) values ({qs})", reader)
             conn.commit()
     logging.info("Done.")
+
+@main.command()
+@click.option(
+    "--neofly",
+    help="path to neofly database",
+    default=os.path.expandvars("%PROGRAMDATA%\\NeoFly\common.db"),
+)
+@click.option(
+    "--career",
+    help="name of the career to add planes to",
+    required=True,
+)
+@click.option(
+    "--starter",
+    help="Select your starting fleet: XCub, C152, or a mix",
+    required=False,
+    default="XCub"
+)
+def globalsandbox(neofly:str, career:str, starter:str) -> None:
+    """Will place a starting aircraft in each top-letter ICAO defined region.
+    """
+    icao_regions = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'K', 'L', 'M',
+                     'N', 'O', 'P', 'R', 'S', 'T', 'U', 'V', 'W', 'Y', 'Z']
+    if not os.path.exists(neofly):
+        raise Exception(f"Unable to find neofly data at '{neofly}")
+    with sqlite3.connect(neofly) as conn:
+        cur = conn.cursor()
+        for r in icao_regions:
+            cur.execute(f"SELECT ident FROM airport WHERE ident LIKE '{r}___%'")
+            airports = cur.fetchall()
+            target_airport = random.choice(airports)[0]
+            insert_c172_g1000 = ('INSERT INTO "main"."hangar" ("Aircraft", "Type", "Engines", "Qualification", "MaxPayloadlbs", "Pax", "Cost", "Rangenm", "Location", "statusEngine", "statusHull", "airframe", "currentFuel", "owner", "status")'
+                                 f"SELECT 'Cessna Skyhawk G1000', 'prop', '1', 'A', '867', '3', '0', '640', '{target_airport}', '100', '100', '0', '0', id, '0'"
+                                 f'FROM career WHERE name="{career}"')
+            insert_xcub = ('INSERT INTO "main"."hangar" ("Aircraft", "Type", "Engines", "Qualification", "MaxPayloadlbs", "Pax", "Cost", "Rangenm", "Location", "statusEngine", "statusHull", "airframe", "currentFuel", "owner", "status") '
+                           f"SELECT 'XCub', 'prop', '1', 'A', '1084', '1', '0', '695', '{target_airport}', '100', '100', '0', '0', id, '0'"
+                           f'FROM career WHERE name="{career}"')
+            insert_c152 = ('INSERT INTO "main"."hangar" ("Aircraft", "Type", "Engines", "Qualification", "MaxPayloadlbs", "Pax", "Cost", "Rangenm", "Location", "statusEngine", "statusHull", "airframe", "currentFuel", "owner", "status") '
+                           f"SELECT 'Cessna 152', 'prop', '1', 'A', '589', '1', '0', '415', '{target_airport}', '100', '100', '0', '0', id, '0' "
+                           f'FROM career WHERE name="{career}"')
+            if starter.lower() == 'xcub':
+                logging.debug(insert_xcub)
+                cur.execute(insert_xcub)
+            elif starter.lower() == 'c172':
+                logging.debug(insert_c172_g1000)
+                cur.execute(insert_c172_g1000)
+            elif starter.lower() == "c152":
+                logging.debug(insert_c152)
+                cur.execute(insert_c152)
+            elif starter.lower() == "mixap":
+                cur.execute(random.choice([insert_xcub, insert_c172_g1000]))
+            else:
+                cur.execute(random.choice([insert_c152, insert_xcub, insert_c172_g1000]))
+        conn.commit()
+        logging.info("Done.")
+    return
 
 def make_qs(listname: list) -> str:
     """Create a list of '?'s for use in a query string.
