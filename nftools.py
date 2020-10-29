@@ -4,6 +4,7 @@ import os
 import sqlite3
 import sys
 import random
+import re
 
 import click
 
@@ -203,6 +204,36 @@ def navdata(neofly: str, navdata: str, force: bool) -> None:
         )
         conn.commit()
         logging.info("Done!")
+
+@main.command()
+@click.option(
+    "--neofly",
+    help="path to neofly database",
+    default=os.path.expandvars("%PROGRAMDATA%\\NeoFly\common.db"),
+)
+def icao(neofly: str) -> None:
+    """Keep only airports with ICAO codes - i.e. 4 letter codes. This should
+    select against 'smaller' airports in favor of more established facilities.
+    """
+    if not os.path.exists(neofly):
+        raise Exception(f"Unable to find neofly data at '{neofly}")
+    with sqlite3.connect(neofly) as conn:
+        cur = conn.cursor()
+        cur.execute("select count(*) from airport")
+        old_rows = cur.fetchone()[0]
+        cur.execute("select ident from airport")
+        codes = cur.fetchall()
+        icao_format = re.compile("\D\D\D\D") # This could be made more precise
+        bad_idents = [i[0] for i in codes if icao_format.match(i[0]) is None]
+        for b in bad_idents:
+            cur.execute(f"delete from airport where ident = '{b}'")
+        cur.execute("select count(*) from airport")
+        new_rows = cur.fetchone()[0]
+        logging.info(f"Deleted {old_rows - new_rows} of {old_rows} airports.")
+        conn.commit()
+        logging.info("Done!")
+    clean_impossible_missions(neofly)
+    move_impossible_aircraft(neofly)
 
 @main.command()
 @click.option(
