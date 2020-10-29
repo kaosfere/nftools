@@ -313,6 +313,50 @@ def aircraft(neofly: str, source: str) -> None:
             conn.commit()
     logging.info("Done.")
 
+@main.command()
+@click.option(
+    "--neofly",
+    help="path to neofly database",
+    default=os.path.expandvars("%PROGRAMDATA%\\NeoFly\common.db"),
+)
+@click.option("--include_hires",
+    help="Also clear airports hires have departed from",
+    default=False)
+def neverlookback(neofly: str, include_hires: bool) -> None:
+    """Will remove all airports that have been departed from by the career.
+
+    Optionally, also remove all airports departed from by hires.
+
+    Never visit the same airport twice!
+    """
+    if not os.path.exists(neofly):
+        raise Exception(f"Unable to find neofly data at '{neofly}")
+    with sqlite3.connect(neofly) as conn:
+        departures=[]
+        logging.info("Deleting airports were successful departures have taken place")
+        cur = conn.cursor()
+        # Get successful missions
+        cur.execute("SELECT DISTINCT fp FROM log WHERE result LIKE 'Success%'")
+        for fpl in cur:
+            # Parse to get the departure code
+            departures.append(fpl[0].split('>')[0])
+
+        if include_hires:
+            cur.execute("SELECT DISTINCT departure FROM rentJob")
+            for d in cur:
+                departures.append(d[0])
+
+        for d in departures:
+            cur.execute(f'DELETE FROM airport WHERE ident="{d}"')
+        conn.commit()
+
+
+    #clean_impossible_missions(neofly)
+    #move_impossible_aircraft(neofly)
+    logging.info("Done")
+    return
+
+
 def make_qs(listname: list) -> str:
     """Create a list of '?'s for use in a query string.
 
