@@ -344,8 +344,11 @@ def globalsandbox(neofly:str, career:str, starter:str) -> None:
             cur.execute(f"SELECT ident FROM airport WHERE ident LIKE '{r}___%'")
             airports = cur.fetchall()
             target_airport = random.choice(airports)[0]
+            insert_c172_g1000 = ('INSERT INTO "main"."hangar" ("Aircraft", "Type", "Engines", "Qualification", "MaxPayloadlbs", "Pax", "Cost", "Rangenm", "Location", "statusEngine", "statusHull", "airframe", "currentFuel", "owner", "status")'
+                                 f"SELECT 'Cessna Skyhawk G1000', 'prop', '1', 'A', '867', '3', '0', '640', '{target_airport}', '100', '100', '0', '0', id, '0'"
+                                 f'FROM career WHERE name="{career}"')
             insert_xcub = ('INSERT INTO "main"."hangar" ("Aircraft", "Type", "Engines", "Qualification", "MaxPayloadlbs", "Pax", "Cost", "Rangenm", "Location", "statusEngine", "statusHull", "airframe", "currentFuel", "owner", "status") '
-                           f"SELECT 'XCub', 'prop', '1', 'A', '1084', '1', '0', '695', '{target_airport}', '94.3799999999995', '0', '0', '0', id, '0'"
+                           f"SELECT 'XCub', 'prop', '1', 'A', '1084', '1', '0', '695', '{target_airport}', '100', '100', '0', '0', id, '0'"
                            f'FROM career WHERE name="{career}"')
             insert_c152 = ('INSERT INTO "main"."hangar" ("Aircraft", "Type", "Engines", "Qualification", "MaxPayloadlbs", "Pax", "Cost", "Rangenm", "Location", "statusEngine", "statusHull", "airframe", "currentFuel", "owner", "status") '
                            f"SELECT 'Cessna 152', 'prop', '1', 'A', '589', '1', '0', '415', '{target_airport}', '100', '100', '0', '0', id, '0' "
@@ -353,11 +356,16 @@ def globalsandbox(neofly:str, career:str, starter:str) -> None:
             if starter.lower() == 'xcub':
                 logging.debug(insert_xcub)
                 cur.execute(insert_xcub)
+            elif starter.lower() == 'c172':
+                logging.debug(insert_c172_g1000)
+                cur.execute(insert_c172_g1000)
             elif starter.lower() == "c152":
                 logging.debug(insert_c152)
                 cur.execute(insert_c152)
+            elif starter.lower() == "mixap":
+                cur.execute(random.choice([insert_xcub, insert_c172_g1000]))
             else:
-                cur.execute(random.choice([insert_c152, insert_xcub]))
+                cur.execute(random.choice([insert_c152, insert_xcub, insert_c172_g1000]))
         conn.commit()
         logging.info("Done.")
     return
