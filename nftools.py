@@ -3,6 +3,7 @@ import logging
 import os
 import sqlite3
 import sys
+import re
 
 import click
 
@@ -223,6 +224,52 @@ def randomhq(neofly: str, career: str) -> None:
         new_location = random.choice(locations)
         logging.info(f"Chosen location: {new_location}")
         cur.execute(f"UPDATE career SET pilotCurrentICAO = '{new_location}' WHERE career.name='{career}'")
+        conn.commit()
+        logging.info("Done!")
+
+@main.command()
+@click.option(
+    "--neofly",
+    help="path to neofly database",
+    default=os.path.expandvars("%PROGRAMDATA%\\NeoFly\common.db"),
+)
+@click.option(
+    "--career",
+    help="name of the career to reorg",
+    required=True,
+)
+@click.option(
+    "--specificity",
+    help="How many leading letters of the ident must match",
+    default = 2,
+)
+def reorg(neofly: str, career: str, specificity: int) -> None:
+    """Your company has undergone reorganization - all airplanes have been
+    reassigned to new airports in their last operational ICAO region, if landed at
+    an ICAO airport.
+    """
+    import random
+    if not os.path.exists(neofly):
+        raise Exception(f"Unable to find neofly data at '{neofly}")
+    with sqlite3.connect(neofly) as conn:
+        cur = conn.cursor()
+        #hangar_cur = conn.cursor()
+        # Select all the locations where there are owned aircraft on the ground
+        cur.execute(f"SELECT hangar.id, Location from hangar JOIN career ON hangar.owner = career.id WHERE career.name='{career}' AND hangar.status = 0")
+        planes = cur.fetchall()
+        for p in planes:
+            # Get the first 'specificity' letters from the ident. ICAO codes
+            # must be an alpha string of length four, so add enough wildcards to
+            # round out the search string
+            ident_glob = f"%{p[1][0:specificity]}" + '_'*(4-specificity)
+            cur.execute(f"SELECT ident FROM airport WHERE ident LIKE '{ident_glob}'")
+            possible_icao = cur.fetchall()
+            icao_format = re.compile("\D\D\D\D") # This could be made more precise
+            new_airport = random.choice(possible_icao)[0]
+            while icao_format.match(new_airport) is None:
+                new_airport = random.choice(possible_icao)[0]
+            cur.execute(f"UPDATE hangar SET Location='{new_airport}' WHERE id='{p[0]}'")
+
         conn.commit()
         logging.info("Done!")
 
